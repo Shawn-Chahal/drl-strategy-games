@@ -83,6 +83,13 @@ def mcts(game, model, n_mcts, d_alpha, d_epsilon, tau=0, tree=None, root_id=-1, 
         if game.h_flip:
             t_state.append(transform_state(np.fliplr(state), player))
 
+        if game.full_symmetry:
+            for i in range(1, 4):
+                t_state.append(transform_state(np.rot90(state, i), player))
+
+            for i in range(4):
+                t_state.append(transform_state(np.rot90(np.fliplr(state), i), player))
+
         p, v = model(tf.convert_to_tensor(t_state), training=training)
         policy = p.numpy()[0]
         value = v.numpy()[0][0]
@@ -93,6 +100,23 @@ def mcts(game, model, n_mcts, d_alpha, d_epsilon, tau=0, tree=None, root_id=-1, 
             value_fliplr = v.numpy()[1][0]
             policy = (policy + policy_fliplr) / 2
             value = (value_fliplr + value_fliplr) / 2
+
+        if game.full_symmetry:
+            policy = [policy]
+            value = [value]
+
+            for i in range(1, 4):
+                policy_temp = p.numpy()[i]
+                policy.append(np.rot90(policy_temp.reshape(state.shape), -i).reshape((-1,)))
+                value.append(v.numpy()[i][0])
+
+            for i in range(4):
+                policy_temp = p.numpy()[i + 4]
+                policy.append(np.fliplr(np.rot90(policy_temp.reshape(state.shape), -i)).reshape((-1,)))
+                value.append(v.numpy()[i + 4][0])
+
+            policy = np.mean(policy, axis=0)
+            value = np.mean(value)
 
         for i, available in enumerate(available_actions):
             if not available:
@@ -125,7 +149,7 @@ def mcts(game, model, n_mcts, d_alpha, d_epsilon, tau=0, tree=None, root_id=-1, 
             child_id = len(tree)
             state = game.update_state(tree[parent_id].state, action, tree[parent_id].player)
             result = game.update_result(state, action, tree[parent_id].player)
-            player = game.update_player(tree[parent_id].player)
+            player = game.update_player(state, tree[parent_id].player)
             available_actions = game.update_available_actions(state, player)
             policy, value = get_policy_value(state, player, available_actions)
             tree.append(Node(child_id, parent_id, state, player, available_actions, result, value, policy))
@@ -234,6 +258,21 @@ def generate_episode_log(game, n_mcts, tau_turns, tau, d_alpha, d_epsilon):
             training_set.append((transform_state(np.fliplr(state), player),
                                  np.fliplr(p_mcts.reshape(state.shape)).reshape((-1,)), z_reward))
 
+        if game.full_symmetry:
+            for i in range(1, 4):
+                training_set.append(
+                    (transform_state(np.rot90(state, i), player),
+                     np.rot90(p_mcts.reshape(state.shape), i).reshape((-1,)),
+                     z_reward)
+                )
+
+            for i in range(4):
+                training_set.append(
+                    (transform_state(np.rot90(np.fliplr(state), i), player),
+                     np.rot90(np.fliplr(p_mcts.reshape(state.shape)), i).reshape((-1,)),
+                     z_reward)
+                )
+
     return training_set
 
 
@@ -254,30 +293,29 @@ def get_time(t):
 
 if __name__ == '__main__':
 
-    game = drl.ConnectFour()
+    game = drl.Reversi()
     mode = 'train'  # 'train', 'play', or 'watch'
-
-    # 0.217/0.161
 
     clear_replay_buffer = True
     generate_data = True
 
     initial_epoch = 0
-    epochs = 100  # 5 epochs per hour
+    epochs = 20  # 2 epochs per hour
 
     learning_rate = 0.02
     momentum = 0.9
 
     n_mcts = 100
-    batch_size = 256
+    batch_size = 512
 
     processes = 5  # Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
 
-    episodes_per_epoch = 5 * processes
-    replay_episodes = 100 * episodes_per_epoch
+    episodes_per_epoch = int(2 * processes) + 1
+    replay_episodes = 1000
+    refresh_factor = episodes_per_epoch / replay_episodes
     epochs_per_checkpoint = 10
     replay_buffer_size = replay_episodes * game.avg_plies * game.symmetry_factor
-    training_steps_per_epoch = int(replay_buffer_size / batch_size)
+    training_steps_per_epoch = int(refresh_factor * replay_buffer_size / batch_size) + 1
 
     c_l2 = 0.0001
     d_alpha = 10.0 / game.branching_factor

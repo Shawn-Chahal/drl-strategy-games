@@ -64,8 +64,8 @@ class Reversi:
     _COLS = _ROWS + 0
     _ACTIONS = _ROWS * _COLS
     _CHANNELS = 2
-    _RESIDUAL_BLOCKS = 10
-    _FILTERS = 128
+    _RESIDUAL_BLOCKS = 8
+    _FILTERS = 64
 
     def __init__(self):
         self.reset()
@@ -398,7 +398,7 @@ class ConnectFour:
     _COLS = 7
     _ACTIONS = _ROWS * _COLS
     _CHANNELS = 2
-    _RESIDUAL_BLOCKS = 7
+    _RESIDUAL_BLOCKS = 8
     _FILTERS = 64
     _CONNECT = 4
 

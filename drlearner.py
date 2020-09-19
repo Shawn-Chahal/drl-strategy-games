@@ -2,7 +2,9 @@ import tensorflow as tf
 import numpy as np
 
 
-def alpha_zero_model(input_shape, n_actions, residual_blocks=19, filters=256, kernel_size=3):
+def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kernel_size=3):
+    """ AlphaZero used: residual_blocks=19, filters=256 """
+
     def residual_block(input_layer):
         res_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding='same')(input_layer)
         res_block_out = tf.keras.layers.BatchNormalization()(res_block_out)
@@ -64,8 +66,6 @@ class Reversi:
     _COLS = _ROWS + 0
     _ACTIONS = _ROWS * _COLS
     _CHANNELS = 2
-    _RESIDUAL_BLOCKS = 8
-    _FILTERS = 64
 
     def __init__(self):
         self.reset()
@@ -77,8 +77,7 @@ class Reversi:
         self.available_actions = self.update_available_actions(self.state, self.player)
 
     def default_model(self):
-        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS,
-                                residual_blocks=self._RESIDUAL_BLOCKS, filters=self._FILTERS)
+        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
 
     def initialize_state(self):
         self.state = np.zeros((self._ROWS, self._COLS))
@@ -398,8 +397,6 @@ class ConnectFour:
     _COLS = 7
     _ACTIONS = _ROWS * _COLS
     _CHANNELS = 2
-    _RESIDUAL_BLOCKS = 8
-    _FILTERS = 64
     _CONNECT = 4
 
     def __init__(self):
@@ -413,8 +410,7 @@ class ConnectFour:
 
     def default_model(self):
 
-        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS,
-                                residual_blocks=self._RESIDUAL_BLOCKS, filters=self._FILTERS)
+        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
 
     def initialize_state(self):
         self.state = np.zeros((self._ROWS, self._COLS))

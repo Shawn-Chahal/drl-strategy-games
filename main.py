@@ -299,8 +299,8 @@ if __name__ == '__main__':
     clear_replay_buffer = False
     generate_data = True
 
-    initial_epoch = 30
-    epochs = 20  # 4 epochs per hour | Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
+    initial_epoch = 75
+    epochs = 10  # 4 epochs per hour | Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
 
     epochs_per_checkpoint = 10
 
@@ -314,10 +314,9 @@ if __name__ == '__main__':
 
     episodes_per_epoch = int(2 * processes) + 1
     replay_episodes = 1000
-    training_fraction = 0.25
 
     replay_buffer_size = replay_episodes * game.avg_plies * game.symmetry_factor
-    training_steps_per_epoch = int(training_fraction * replay_buffer_size / batch_size) + 1
+    training_steps_per_epoch = int(replay_buffer_size / batch_size) + 1
 
     c_l2 = 0.0001
     d_alpha = 10.0 / game.branching_factor

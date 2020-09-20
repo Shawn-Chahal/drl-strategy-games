@@ -57,7 +57,6 @@ class Reversi:
 
     branching_factor = 10
     avg_plies = 58
-    symmetry_factor = 8
 
     h_flip = False
     full_symmetry = True
@@ -388,7 +387,6 @@ class ConnectFour:
 
     branching_factor = 4
     avg_plies = 36
-    symmetry_factor = 2
 
     h_flip = True
     full_symmetry = False

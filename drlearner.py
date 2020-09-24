@@ -52,6 +52,104 @@ def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kern
     return model
 
 
+class ConnectFour:
+    name = 'connect-four'
+
+    branching_factor = 4
+    avg_plies = 36
+
+    h_flip = True
+    full_symmetry = False
+
+    _ROWS = 6
+    _COLS = 7
+    _ACTIONS = _ROWS * _COLS
+    _CHANNELS = 2
+    _CONNECT = 4
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.initialize_state()
+        self.result = -1
+        self.player = 1
+        self.available_actions = self.update_available_actions(self.state, self.player)
+
+    def default_model(self):
+
+        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
+
+    def initialize_state(self):
+        self.state = np.zeros((self._ROWS, self._COLS))
+
+    def get_row_col(self, action):
+        row = action // self._COLS
+        col = action % self._COLS
+        return row, col
+
+    def update_state(self, state, action, player):
+        state = state.copy()
+        row, col = self.get_row_col(action)
+        state[row, col] = player
+        return state
+
+    def update_result(self, state, action, player):
+
+        for i in range(self._ROWS):
+            for j in range(self._COLS):
+
+                # Check vertical
+                if i <= self._ROWS - self._CONNECT:
+                    if sum([1 for k in range(self._CONNECT) if state[i + k, j] == player]) == self._CONNECT:
+                        return player
+
+                # Check horizontal
+                if j <= self._COLS - self._CONNECT:
+                    if sum([1 for k in range(self._CONNECT) if state[i, j + k] == player]) == self._CONNECT:
+                        return player
+
+                # Check \ diagonal
+                if (i <= self._ROWS - self._CONNECT) and (j <= self._COLS - self._CONNECT):
+                    if sum([1 for k in range(self._CONNECT) if
+                            state[i + k, j + k] == player]) == self._CONNECT:
+                        return player
+
+                # Check / diagonal
+                if (i <= self._ROWS - self._CONNECT) and (j >= self._CONNECT - 1):
+                    if sum([1 for k in range(self._CONNECT) if
+                            state[i + k, j - k] == player]) == self._CONNECT:
+                        return player
+
+        if (state == 0).sum() == 0:
+            return 0
+        else:
+            return -1
+
+    def update_player(self, state, player):
+        if player == 1:
+            return 2
+        else:
+            return 1
+
+    def update_available_actions(self, state, player):
+        available_actions = np.zeros(state.shape)
+
+        for j in range(self._COLS):
+            for i in range(self._ROWS - 1, -1, -1):
+                if state[i, j] == 0:
+                    available_actions[i, j] = True
+                    break
+
+        return available_actions.reshape((-1,))
+
+    def update(self, action):
+        self.state = self.update_state(self.state, action, self.player)
+        self.result = self.update_result(self.state, action, self.player)
+        self.player = self.update_player(self.state, self.player)
+        self.available_actions = self.update_available_actions(self.state, self.player)
+
+
 class Reversi:
     name = 'reversi'
 
@@ -374,104 +472,6 @@ class Reversi:
                 available_actions[a] = action_available(state, a)
 
         return available_actions
-
-    def update(self, action):
-        self.state = self.update_state(self.state, action, self.player)
-        self.result = self.update_result(self.state, action, self.player)
-        self.player = self.update_player(self.state, self.player)
-        self.available_actions = self.update_available_actions(self.state, self.player)
-
-
-class ConnectFour:
-    name = 'connect-four'
-
-    branching_factor = 4
-    avg_plies = 36
-
-    h_flip = True
-    full_symmetry = False
-
-    _ROWS = 6
-    _COLS = 7
-    _ACTIONS = _ROWS * _COLS
-    _CHANNELS = 2
-    _CONNECT = 4
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.initialize_state()
-        self.result = -1
-        self.player = 1
-        self.available_actions = self.update_available_actions(self.state, self.player)
-
-    def default_model(self):
-
-        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
-
-    def initialize_state(self):
-        self.state = np.zeros((self._ROWS, self._COLS))
-
-    def get_row_col(self, action):
-        row = action // self._COLS
-        col = action % self._COLS
-        return row, col
-
-    def update_state(self, state, action, player):
-        state = state.copy()
-        row, col = self.get_row_col(action)
-        state[row, col] = player
-        return state
-
-    def update_result(self, state, action, player):
-
-        for i in range(self._ROWS):
-            for j in range(self._COLS):
-
-                # Check vertical
-                if i <= self._ROWS - self._CONNECT:
-                    if sum([1 for k in range(self._CONNECT) if state[i + k, j] == player]) == self._CONNECT:
-                        return player
-
-                # Check horizontal
-                if j <= self._COLS - self._CONNECT:
-                    if sum([1 for k in range(self._CONNECT) if state[i, j + k] == player]) == self._CONNECT:
-                        return player
-
-                # Check \ diagonal
-                if (i <= self._ROWS - self._CONNECT) and (j <= self._COLS - self._CONNECT):
-                    if sum([1 for k in range(self._CONNECT) if
-                            state[i + k, j + k] == player]) == self._CONNECT:
-                        return player
-
-                # Check / diagonal
-                if (i <= self._ROWS - self._CONNECT) and (j >= self._CONNECT - 1):
-                    if sum([1 for k in range(self._CONNECT) if
-                            state[i + k, j - k] == player]) == self._CONNECT:
-                        return player
-
-        if (state == 0).sum() == 0:
-            return 0
-        else:
-            return -1
-
-    def update_player(self, state, player):
-        if player == 1:
-            return 2
-        else:
-            return 1
-
-    def update_available_actions(self, state, player):
-        available_actions = np.zeros(state.shape)
-
-        for j in range(self._COLS):
-            for i in range(self._ROWS - 1, -1, -1):
-                if state[i, j] == 0:
-                    available_actions[i, j] = True
-                    break
-
-        return available_actions.reshape((-1,))
 
     def update(self, action):
         self.state = self.update_state(self.state, action, self.player)

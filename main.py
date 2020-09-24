@@ -293,17 +293,25 @@ def get_time(t):
 
 if __name__ == '__main__':
 
-    game = drl.Reversi()
-    mode = 'train'  # 'train', 'play', or 'watch'
+    game = drl.ConnectFour()
+    mode = 'play'  # 'train', 'play', or 'watch'
 
-    clear_replay_buffer = True
+    clear_replay_buffer = False
     generate_data = True
 
-    initial_epoch = 0
-    epochs = 10  # ? epochs per hour | Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
+    initial_epoch = 591
+    epochs = 9
 
     batch_size = 512
-    n_mcts = 200
+    n_mcts = 400
+
+    '''
+    Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
+    Connect Four:
+    Epochs [  1, 400]; n_mcts = 200; 8.5 epochs per hour
+    Epochs [401, 500]; n_mcts = 300; 6.0 epochs per hour
+    Epochs [501,    ]; n_mcts = 400; 5.0 epochs per hour
+    '''
 
     processes = 5  # Intel Core i7-860, 16GB DDR3 RAM, Nvidia GeForce GTX 1660 6GB
     episodes_per_epoch = 2 * processes

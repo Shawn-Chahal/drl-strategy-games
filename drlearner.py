@@ -1,5 +1,273 @@
 import tensorflow as tf
 import numpy as np
+from scipy.special import softmax as sp_softmax
+
+
+def opponent(player):
+    if player == 1:
+        return 2
+    else:
+        return 1
+
+
+def transform_state(state, player):
+    t_state_1 = (state == player)
+    t_state_2 = (state == opponent(player))
+
+    return np.stack((t_state_1, t_state_2), axis=-1).astype(np.float32)
+
+
+def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verbose=False):
+    d_alpha = 10.0 / game.branching_factor
+    d_epsilon = 0.25
+
+    if training:
+        rng = np.random.default_rng()
+    else:
+        rng = np.random.default_rng(1)
+
+    class Node:
+
+        def __init__(self, node_id, parent_id, state, player, available_actions, result, back_value, policy):
+            self.node_id = node_id
+            self.parent_id = parent_id
+            self.children_ids = [-1] * policy.shape[0]
+            self.state = state
+            self.player = player
+            self.available_actions = available_actions
+            self.opponent = 2 if player == 1 else 1
+            self.result = result
+            self.back_value = back_value
+            self.c_puct = 1.0
+
+            self.n = np.zeros(policy.shape)
+            self.w = np.zeros(policy.shape)
+            self.q = np.zeros(policy.shape)
+            self.p = policy
+
+        def mcts_action(self):
+
+            u = self.c_puct * self.p * (np.sqrt(np.sum(self.n)) / (1 + self.n))
+
+            next_search_proba = self.q + u
+            min_proba = np.amin(next_search_proba) - 1
+            for a, available_action in enumerate(self.available_actions):
+                if not available_action:
+                    next_search_proba[a] = min_proba
+
+            if int(np.sum(self.n) + 0.1) == 0:
+                action = rng.choice([a for a, available in enumerate(self.available_actions) if available])
+            else:
+                action = np.argmax(next_search_proba)
+
+            return action
+
+        def update_node(self, action, value):
+            self.n[action] += 1
+            self.w[action] += value
+            self.q[action] = self.w[action] / self.n[action]
+            self.back_value = value
+
+    def get_policy_value(state, player, available_actions, dirichlet_noise=False):
+
+        t_state = [transform_state(state, player)]
+
+        if game.h_flip:
+            t_state.append(transform_state(np.fliplr(state), player))
+
+        if game.full_symmetry:
+            for i in range(1, 4):
+                t_state.append(transform_state(np.rot90(state, i), player))
+
+            for i in range(4):
+                t_state.append(transform_state(np.rot90(np.fliplr(state), i), player))
+
+        p, v = model(tf.convert_to_tensor(t_state), training=training)
+        policy = p.numpy()[0]
+        value = v.numpy()[0][0]
+
+        if game.h_flip:
+            policy_fliplr = p.numpy()[1]
+            policy_fliplr = np.fliplr(policy_fliplr.reshape(state.shape)).reshape((-1,))
+            value_fliplr = v.numpy()[1][0]
+            policy = (policy + policy_fliplr) / 2
+            value = (value_fliplr + value_fliplr) / 2
+
+        if game.full_symmetry:
+            policy = [policy]
+            value = [value]
+
+            for i in range(1, 4):
+                policy_temp = p.numpy()[i]
+                policy.append(np.rot90(policy_temp.reshape(state.shape), -i).reshape((-1,)))
+                value.append(v.numpy()[i][0])
+
+            for i in range(4):
+                policy_temp = p.numpy()[i + 4]
+                policy.append(np.fliplr(np.rot90(policy_temp.reshape(state.shape), -i)).reshape((-1,)))
+                value.append(v.numpy()[i + 4][0])
+
+            policy = np.mean(policy, axis=0)
+            value = np.mean(value)
+
+        for i, available in enumerate(available_actions):
+            if not available:
+                policy[i] = -10000
+
+        policy = sp_softmax(policy)
+        policy = policy * available_actions
+
+        if dirichlet_noise:
+            n_pool = rng.dirichlet([d_alpha] * int(available_actions.sum() + 0.1))
+            n = np.zeros_like(policy)
+            n_i = 0
+            for i, available in enumerate(available_actions):
+                if available:
+                    n[i] = n_pool[n_i]
+                    n_i += 1
+
+            policy = (1 - d_epsilon) * policy + d_epsilon * n
+
+        if policy.sum() > 0:
+            policy = policy / policy.sum()
+
+        return policy, value
+
+    def update_tree(tree, parent_id):
+        action = tree[parent_id].mcts_action()
+        child_id = tree[parent_id].children_ids[action]
+
+        if child_id == -1:
+            child_id = len(tree)
+            state = game.update_state(tree[parent_id].state, action, tree[parent_id].player)
+            result = game.update_result(state, action, tree[parent_id].player)
+            player = game.update_player(state, tree[parent_id].player)
+            available_actions = game.update_available_actions(state, player)
+            policy, value = get_policy_value(state, player, available_actions)
+            tree.append(Node(child_id, parent_id, state, player, available_actions, result, value, policy))
+            tree[parent_id].children_ids[action] = child_id
+
+            if tree[child_id].result == tree[parent_id].player:
+                parent_value = 1
+            elif tree[child_id].result == tree[parent_id].opponent:
+                parent_value = -1
+            elif tree[child_id].result == 0:
+                parent_value = 0
+            elif tree[child_id].player == tree[parent_id].opponent:
+                parent_value = -tree[child_id].back_value
+            else:
+                parent_value = tree[child_id].back_value
+
+            tree[parent_id].update_node(action, parent_value)
+
+        else:
+            if tree[child_id].result == tree[parent_id].player:
+                parent_value = 1
+            elif tree[child_id].result == tree[parent_id].opponent:
+                parent_value = -1
+            elif tree[child_id].result == 0:
+                parent_value = 0
+            else:
+                update_tree(tree, child_id)
+                if tree[child_id].player == tree[parent_id].opponent:
+                    parent_value = -tree[child_id].back_value
+                else:
+                    parent_value = tree[child_id].back_value
+
+            tree[parent_id].update_node(action, parent_value)
+
+    policy, value = get_policy_value(game.state, game.player, game.available_actions, dirichlet_noise=training)
+
+    if root_id < 0:
+        tree = []
+        root_id = 0
+        parent_id = -1
+        initial_result = -1
+        tree.append(
+            Node(root_id, parent_id, game.state, game.player, game.available_actions, initial_result, value, policy))
+    else:
+        tree[root_id].p = policy
+
+    while tree[root_id].n.sum() < n_mcts:
+        update_tree(tree, root_id)
+
+    if verbose:
+        print(100 * policy.reshape(game.state.shape) // 1)
+        print('------ Policy ------')
+        print(100 * (tree[root_id].n / np.sum(tree[root_id].n)).reshape(game.state.shape) // 1)
+        print('------- MCTS -------')
+
+    if tau == 0:
+        p_mcts = np.zeros(shape=tree[root_id].n.shape)
+        p_mcts[np.argmax(tree[root_id].n)] = 1
+    else:
+        p_mcts = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
+
+    action = rng.choice(len(game.available_actions), p=p_mcts)
+
+    if not game.available_actions[action]:
+        for a, available_action in enumerate(game.available_actions):
+            if available_action:
+                p_mcts = np.zeros(shape=tree[root_id].n.shape)
+                p_mcts[a] = 1
+                action = a + 0
+                break
+
+    root_id = tree[root_id].children_ids[action]
+
+    return p_mcts, action, tree, root_id
+
+
+def generate_episode_log(game, model_path, n_mcts, tau_turns):
+    model = tf.keras.models.load_model(model_path)
+    training_set = []
+    game_logs = []
+    tree = None
+    root_id = -1
+    turn = 0
+    tau = 1
+    game.reset()
+
+    while game.result == -1:
+        turn += 1
+
+        if turn > tau_turns:
+            tau = 0
+
+        p_mcts, action, tree, root_id = mcts(game, model, n_mcts, tau, tree, root_id, training=True)
+        game_logs.append((game.state, p_mcts, game.player))
+        game.update(action)
+
+    for state, p_mcts, player in game_logs:
+        if game.result == player:
+            z_reward = 1.0
+        elif game.result == opponent(player):
+            z_reward = -1.0
+        else:
+            z_reward = 0
+
+        training_set.append((transform_state(state, player), p_mcts, z_reward))
+
+        if game.h_flip:
+            training_set.append((transform_state(np.fliplr(state), player),
+                                 np.fliplr(p_mcts.reshape(state.shape)).reshape((-1,)), z_reward))
+
+        if game.full_symmetry:
+            for i in range(1, 4):
+                training_set.append(
+                    (transform_state(np.rot90(state, i), player),
+                     np.rot90(p_mcts.reshape(state.shape), i).reshape((-1,)),
+                     z_reward)
+                )
+
+            for i in range(4):
+                training_set.append(
+                    (transform_state(np.rot90(np.fliplr(state), i), player),
+                     np.rot90(np.fliplr(p_mcts.reshape(state.shape)), i).reshape((-1,)),
+                     z_reward)
+                )
+
+    return training_set
 
 
 def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kernel_size=3):
@@ -57,6 +325,8 @@ class ConnectFour:
 
     branching_factor = 4
     avg_plies = 36
+
+    symmetry_factor = 2
 
     h_flip = True
     full_symmetry = False
@@ -155,6 +425,8 @@ class Reversi:
 
     branching_factor = 10
     avg_plies = 58
+
+    symmetry_factor = 8
 
     h_flip = False
     full_symmetry = True

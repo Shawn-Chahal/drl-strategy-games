@@ -1,0 +1,2 @@
+# Deep Reinforcement Learning Strategy Games 
+A web app that allows the user to play Connect Four against an artificial intelligence. The AI employs deep reinforcement learning and was trained entirely through self play using TensorFlow in Python.

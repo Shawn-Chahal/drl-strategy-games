@@ -218,8 +218,9 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
     return p_mcts, action, tree, root_id
 
 
-def generate_episode_log(game, model_path, n_mcts, tau_turns):
+def generate_episode_log(game, model_path, n_mcts):
     model = tf.keras.models.load_model(model_path)
+    tau_turns = int(0.2 * game.avg_plies) + 1
     training_set = []
     game_logs = []
     tree = None

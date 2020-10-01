@@ -1,2 +1,2 @@
 # Deep Reinforcement Learning Strategy Games 
-A web app that allows the user to play Connect Four against an artificial intelligence. The AI employs deep reinforcement learning and was trained entirely through self play using TensorFlow in Python.
+This repository trains the model for the [Connect Four](https://shawnchahal.com/connect-four) web app. The AI employs deep reinforcement learning and was trained entirely through self play using TensorFlow in Python. Based on the AlphaZero algorithm, but made light weight to run on single GPU computers.

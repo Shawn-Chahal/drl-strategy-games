@@ -30,7 +30,7 @@ if __name__ == '__main__':
     game = drl.Reversi()
     mode = 'train'  # 'train' or 'play'
     plot_only = False
-    initial_epoch = 105
+    initial_epoch = 253
     final_epoch = 1000
 
     PROCESSES = 5
@@ -119,8 +119,8 @@ if __name__ == '__main__':
                           f'Value: {loss_value.numpy():.4f}, L2: {loss_l2.numpy():.4f}) | '
                           f'Replay buffer size: {len(training_data)}')
 
-                    if iteration >= convergence_iterations:
-                        delta_convergence = (dict_loss['Loss (Total)'][-(convergence_iterations + 1)] -
+                    if iteration > convergence_iterations:
+                        delta_convergence = (dict_loss['Loss (Total)'][-convergence_iterations] -
                                              dict_loss['Loss (Total)'][-1])
                         if delta_convergence < convergence_threshold:
                             break
@@ -181,7 +181,7 @@ if __name__ == '__main__':
         plt.savefig(os.path.join('logs', f'learning_curve_{game.name}.png'))
 
     if mode is 'play':
-        model = tf.keras.models.load_model(model_path)
+        model = tf.keras.models.load_model(os.path.join('best-networks', f'model_{game.name}.h5'))
         n_mcts = n_mcts_max + 0
         game.reset()
         print(game.state)

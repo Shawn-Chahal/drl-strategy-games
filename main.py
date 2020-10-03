@@ -30,7 +30,7 @@ if __name__ == '__main__':
     game = drl.Reversi()
     mode = 'train'  # 'train' or 'play'
     plot_only = False
-    initial_epoch = 253
+    initial_epoch = 348
     final_epoch = 1000
 
     PROCESSES = 5

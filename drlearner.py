@@ -21,10 +21,7 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
 
-    if training:
-        rng = np.random.default_rng()
-    else:
-        rng = np.random.default_rng(1)
+    rng = np.random.default_rng()
 
     class Node:
 
@@ -178,6 +175,14 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
 
     policy, value = get_policy_value(game.state, game.player, game.available_actions, dirichlet_noise=training)
 
+    if verbose:
+        print('------ Policy ------')
+        print(100 * policy.reshape(game.state.shape) // 1)
+        print('--------------------')
+
+    if n_mcts == 0:
+        return -1, np.argmax(policy), -1, -1
+
     if root_id < 0:
         tree = []
         root_id = 0
@@ -192,10 +197,9 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
         update_tree(tree, root_id)
 
     if verbose:
-        print(100 * policy.reshape(game.state.shape) // 1)
-        print('------ Policy ------')
-        print(100 * (tree[root_id].n / np.sum(tree[root_id].n)).reshape(game.state.shape) // 1)
         print('------- MCTS -------')
+        print(100 * (tree[root_id].n / np.sum(tree[root_id].n)).reshape(game.state.shape) // 1)
+        print('--------------------')
 
     if tau == 0:
         p_mcts = np.zeros(shape=tree[root_id].n.shape)
@@ -218,9 +222,9 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
     return p_mcts, action, tree, root_id
 
 
-def generate_episode_log(game, model_path, n_mcts):
+def generate_episode_log(game, model_path, n_mcts, tau_turns, discount_factor):
     model = tf.keras.models.load_model(model_path)
-    tau_turns = int(0.2 * game.avg_plies) + 1
+
     training_set = []
     game_logs = []
     tree = None
@@ -239,11 +243,13 @@ def generate_episode_log(game, model_path, n_mcts):
         game_logs.append((game.state, p_mcts, game.player))
         game.update(action)
 
-    for state, p_mcts, player in game_logs:
+    game_plies = len(game_logs)
+    for i, (state, p_mcts, player) in enumerate(game_logs, 1):
+        plies_left = game_plies - i
         if game.result == player:
-            z_reward = 1.0
+            z_reward = discount_factor ** plies_left
         elif game.result == opponent(player):
-            z_reward = -1.0
+            z_reward = - (discount_factor ** plies_left)
         else:
             z_reward = 0
 

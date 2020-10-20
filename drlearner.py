@@ -222,7 +222,7 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
     return p_mcts, action, tree, root_id
 
 
-def generate_episode_log(game, model_path, n_mcts, tau_turns, discount_factor):
+def generate_episode_log(game, model_path, n_mcts, tau_turns):
     model = tf.keras.models.load_model(model_path)
 
     training_set = []
@@ -243,13 +243,12 @@ def generate_episode_log(game, model_path, n_mcts, tau_turns, discount_factor):
         game_logs.append((game.state, p_mcts, game.player))
         game.update(action)
 
-    game_plies = len(game_logs)
     for i, (state, p_mcts, player) in enumerate(game_logs, 1):
-        plies_left = game_plies - i
+
         if game.result == player:
-            z_reward = discount_factor ** plies_left
+            z_reward = 1
         elif game.result == opponent(player):
-            z_reward = - (discount_factor ** plies_left)
+            z_reward = -1
         else:
             z_reward = 0
 

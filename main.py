@@ -16,6 +16,61 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
+def learning_curve(width, height):
+    fig = plt.figure(figsize=(width, height), dpi=600)
+
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(dict_loss['Epoch'], dict_loss['Loss (Total)'], label='Total')
+    ax.plot(dict_loss['Epoch'], dict_loss['Loss (Policy)'], label='Policy')
+    ax.plot(dict_loss['Epoch'], dict_loss['Loss (Value)'], label='Value')
+    ax.plot(dict_loss['Epoch'], dict_loss['Loss (L2)'], label='L2')
+    ax.legend(ncol=2)
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join('logs', f'learning_curve_{game.name}.png'))
+
+
+def dashboard(width, height, n_last_epochs=None):
+    n_rows = 1
+    n_cols = 4
+
+    if n_last_epochs is None:
+        start = 0
+    else:
+        start = -min(n_last_epochs, epoch)
+
+    fig = plt.figure(figsize=(width, height), dpi=600)
+
+    ax = fig.add_subplot(n_rows, n_cols, 1)
+    ax.plot(dict_loss['Epoch'][start:], dict_loss['Loss (Total)'][start:], color='tab:blue')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss (Total)')
+
+    ax = fig.add_subplot(n_rows, n_cols, 2)
+    ax.plot(dict_loss['Epoch'][start:], dict_loss[f'Loss (Policy)'][start:], color='tab:orange')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel(f'Loss (Policy)')
+
+    ax = fig.add_subplot(n_rows, n_cols, 3)
+    ax.plot(dict_loss['Epoch'][start:], dict_loss[f'Loss (Value)'][start:], color='tab:green')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel(f'Loss (Value)')
+
+    ax = fig.add_subplot(n_rows, n_cols, 4)
+    ax.plot(dict_loss['Epoch'][start:], dict_loss[f'Loss (L2)'][start:], color='tab:red')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel(f'Loss (L2)')
+
+    plt.tight_layout()
+
+    if n_last_epochs is None:
+        plt.savefig(os.path.join('logs', f'learning_curve_{game.name}_dashboard.png'))
+    else:
+        plt.savefig(os.path.join('logs', f'learning_curve_{game.name}_dashboard_recent.png'))
+
+
 def tournament(game, model_1_epoch, model_2_epoch, n_mcts_play, match_number):
     print(f'Match: {match_number}')
 
@@ -48,28 +103,22 @@ if __name__ == '__main__':
 
     PROCESSES = 5
     BATCH_SIZE = 512
-    CYCLES_PER_EPOCH = 2
     N_MCTS = 800
     C_L2 = 0.0001
 
     game = drl.ConnectFour()
-    mode = 'train'  # 'train', 'play', or 'tournament'
-    initial_epoch = 64
+    mode = 'play'  # 'train', 'play', or 'tournament'
+    initial_epoch = 203
     final_epoch = 1000
 
     n_mcts_play = 0
-    epoch_play = 37
-    tournament_range = [i for i in range(0, 100 + 1, 10)]
+    tournament_range = [i for i in range(0, initial_epoch + 1, max(initial_epoch // 10, 1))]
     frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
     min_deque_size = 10 * frames_per_epoch
-    deque_growth = 0.5
-    tau_turns = int(0.5 * game.avg_plies + 1)
-    discount_factor = np.exp(np.log(0.5) / game.avg_plies)
+    deque_growth = 0.4
+    tau_turns = int(0.2 * game.avg_plies + 1)
 
     model_path = os.path.join('objects', f'model_{game.name}_{initial_epoch:04d}.h5')
-    alpha = 0.7
-    n_rows = 2
-    n_cols = 2
 
     if mode is 'train':
 
@@ -97,7 +146,7 @@ if __name__ == '__main__':
 
         for epoch in range(initial_epoch + 1, final_epoch + 1):
             replay_buffer = deque(replay_buffer, max(min_deque_size, int(deque_growth * epoch * frames_per_epoch)))
-            episode_args = [(game, model_path, N_MCTS, tau_turns, discount_factor) for _ in range(PROCESSES)]
+            episode_args = [(game, model_path, N_MCTS, tau_turns) for _ in range(PROCESSES)]
 
             with Pool(PROCESSES) as pool:
                 pool_results = pool.starmap_async(drl.generate_episode_log, episode_args)
@@ -111,32 +160,31 @@ if __name__ == '__main__':
             ds = [replay_buffer_list[i: i + BATCH_SIZE] for i in range(0, len(replay_buffer_list), BATCH_SIZE)]
             epoch_loss = {'Total': [], 'Policy': [], 'Value': [], 'L2': []}
 
-            for _ in range(CYCLES_PER_EPOCH):
-                for ds_batch in ds:
-                    t_state, p_mcts, z_reward = map(list, zip(*ds_batch))
+            for ds_batch in ds:
+                t_state, p_mcts, z_reward = map(list, zip(*ds_batch))
 
-                    with tf.GradientTape() as tape:
-                        p_nn, v_nn = model(tf.stack(t_state), training=True)
+                with tf.GradientTape() as tape:
+                    p_nn, v_nn = model(tf.stack(t_state), training=True)
 
-                        ls_p_nn = tf.nn.log_softmax(p_nn)
-                        loss_policy = -tf.math.reduce_mean(
-                            tf.math.reduce_sum(tf.math.multiply(p_mcts, ls_p_nn), axis=1))
+                    ls_p_nn = tf.nn.log_softmax(p_nn)
+                    loss_policy = -tf.math.reduce_mean(
+                        tf.math.reduce_sum(tf.math.multiply(p_mcts, ls_p_nn), axis=1))
 
-                        loss_value = loss_mse(z_reward, v_nn)
+                    loss_value = loss_mse(z_reward, v_nn)
 
-                        weights_list = [tf.reshape(w_layer, (-1,)) for w_layer in model.trainable_variables]
-                        weights = tf.concat(weights_list, axis=0)
-                        loss_l2 = l2_reg(weights)
+                    weights_list = [tf.reshape(w_layer, (-1,)) for w_layer in model.trainable_variables]
+                    weights = tf.concat(weights_list, axis=0)
+                    loss_l2 = l2_reg(weights)
 
-                        loss = loss_policy + loss_value + loss_l2
+                    loss = loss_policy + loss_value + loss_l2
 
-                    grads = tape.gradient(loss, model.trainable_variables)
-                    optimizer.apply_gradients(grads_and_vars=zip(grads, model.trainable_variables))
+                grads = tape.gradient(loss, model.trainable_variables)
+                optimizer.apply_gradients(grads_and_vars=zip(grads, model.trainable_variables))
 
-                    epoch_loss['Total'].append(loss.numpy())
-                    epoch_loss['Policy'].append(loss_policy.numpy())
-                    epoch_loss['Value'].append(loss_value.numpy())
-                    epoch_loss['L2'].append(loss_l2.numpy())
+                epoch_loss['Total'].append(loss.numpy())
+                epoch_loss['Policy'].append(loss_policy.numpy())
+                epoch_loss['Value'].append(loss_value.numpy())
+                epoch_loss['L2'].append(loss_l2.numpy())
 
             dict_loss['Loss (Total)'].append(np.mean(np.array(epoch_loss['Total'])))
             dict_loss['Loss (Policy)'].append(np.mean(np.array(epoch_loss['Policy'])))
@@ -160,47 +208,17 @@ if __name__ == '__main__':
             pd.DataFrame.from_dict(dict_loss).to_csv(os.path.join('logs', f'loss_{game.name}.csv'), index=False)
 
             print(f'Epoch: {epoch}/{final_epoch} | '
-                  f'Elapsed: {elapsed_time_r[0]}:{elapsed_time_r[1]:02d}:{elapsed_time_r[2]:02d} | '
-                  f'Total: {total_time_r[0]}:{total_time_r[1]:02d}:{total_time_r[2]:02d} | '
+                  f'Time: {total_time_r[0]}:{total_time_r[1]:02d}:{total_time_r[2]:02d} | '
                   f'Loss: {dict_loss["Loss (Total)"][-1]:.4f} (Policy: {dict_loss["Loss (Policy)"][-1]:.4f}, '
                   f'Value: {dict_loss["Loss (Value)"][-1]:.4f}, L2: {dict_loss["Loss (L2)"][-1]:.4f}) | '
                   f'Replay buffer size: {len(replay_buffer)}')
 
-            fig = plt.figure(figsize=(8, 6), dpi=600)
-
-            ax = fig.add_subplot(n_rows, n_cols, 1)
-            ax.plot(dict_loss['Epoch'], dict_loss['Loss (Total)'], label='Total', alpha=alpha)
-            ax.plot(dict_loss['Epoch'], dict_loss['Loss (Policy)'], label='Policy', alpha=alpha)
-            ax.plot(dict_loss['Epoch'], dict_loss['Loss (Value)'], label='Value', alpha=alpha)
-            ax.plot(dict_loss['Epoch'], dict_loss['Loss (L2)'], label='L2', alpha=alpha)
-            ax.legend(ncol=2)
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel('Loss')
-            ax.set_yscale('log')
-
-            ax = fig.add_subplot(n_rows, n_cols, 2)
-            ax.plot(dict_loss['Epoch'], dict_loss[f'Loss (Policy)'], color='tab:orange')
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel(f'Loss (Policy)')
-            ax.set_yscale('log')
-
-            ax = fig.add_subplot(n_rows, n_cols, 3)
-            ax.plot(dict_loss['Epoch'], dict_loss[f'Loss (Value)'], color='tab:green')
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel(f'Loss (Value)')
-            ax.set_yscale('log')
-
-            ax = fig.add_subplot(n_rows, n_cols, 4)
-            ax.plot(dict_loss['Epoch'], dict_loss[f'Loss (L2)'], color='tab:red')
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel(f'Loss (L2)')
-            ax.set_yscale('log')
-
-            plt.tight_layout()
-            plt.savefig(os.path.join('logs', f'learning_curve_{game.name}.png'))
+            learning_curve(6, 4)
+            dashboard(16, 4)
+            dashboard(16, 4, 50)
 
     if mode is 'play':
-        model = tf.keras.models.load_model(os.path.join('objects', f'model_{game.name}_{epoch_play:04d}.h5'))
+        model = tf.keras.models.load_model(os.path.join('objects', f'model_{game.name}_{initial_epoch:04d}.h5'))
         game.reset()
         player_human = int(input("Choose a player [1, 2]: "))
         print(game.state)

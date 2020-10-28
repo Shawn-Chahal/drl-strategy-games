@@ -11,21 +11,32 @@ def opponent(player):
 
 
 def transform_state(state, player):
-    t_state_1 = (state == player)
-    t_state_2 = (state == opponent(player))
+    t_state_1 = state == player
+    t_state_2 = state == opponent(player)
 
     return np.stack((t_state_1, t_state_2), axis=-1).astype(np.float32)
 
 
-def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verbose=False):
+def mcts(
+    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verbose=False
+):
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
 
     rng = np.random.default_rng()
 
     class Node:
-
-        def __init__(self, node_id, parent_id, state, player, available_actions, result, back_value, policy):
+        def __init__(
+            self,
+            node_id,
+            parent_id,
+            state,
+            player,
+            available_actions,
+            result,
+            back_value,
+            policy,
+        ):
             self.node_id = node_id
             self.parent_id = parent_id
             self.children_ids = [-1] * policy.shape[0]
@@ -53,7 +64,13 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
                     next_search_proba[a] = min_proba
 
             if int(np.sum(self.n) + 0.1) == 0:
-                action = rng.choice([a for a, available in enumerate(self.available_actions) if available])
+                action = rng.choice(
+                    [
+                        a
+                        for a, available in enumerate(self.available_actions)
+                        if available
+                    ]
+                )
             else:
                 action = np.argmax(next_search_proba)
 
@@ -96,12 +113,18 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
 
             for i in range(1, 4):
                 policy_temp = p.numpy()[i]
-                policy.append(np.rot90(policy_temp.reshape(state.shape), -i).reshape((-1,)))
+                policy.append(
+                    np.rot90(policy_temp.reshape(state.shape), -i).reshape((-1,))
+                )
                 value.append(v.numpy()[i][0])
 
             for i in range(4):
                 policy_temp = p.numpy()[i + 4]
-                policy.append(np.fliplr(np.rot90(policy_temp.reshape(state.shape), -i)).reshape((-1,)))
+                policy.append(
+                    np.fliplr(np.rot90(policy_temp.reshape(state.shape), -i)).reshape(
+                        (-1,)
+                    )
+                )
                 value.append(v.numpy()[i + 4][0])
 
             policy = np.mean(policy, axis=0)
@@ -136,12 +159,25 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
 
         if child_id == -1:
             child_id = len(tree)
-            state = game.update_state(tree[parent_id].state, action, tree[parent_id].player)
+            state = game.update_state(
+                tree[parent_id].state, action, tree[parent_id].player
+            )
             result = game.update_result(state, action, tree[parent_id].player)
             player = game.update_player(state, tree[parent_id].player)
             available_actions = game.update_available_actions(state, player)
             policy, value = get_policy_value(state, player, available_actions)
-            tree.append(Node(child_id, parent_id, state, player, available_actions, result, value, policy))
+            tree.append(
+                Node(
+                    child_id,
+                    parent_id,
+                    state,
+                    player,
+                    available_actions,
+                    result,
+                    value,
+                    policy,
+                )
+            )
             tree[parent_id].children_ids[action] = child_id
 
             if tree[child_id].result == tree[parent_id].player:
@@ -173,12 +209,14 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
 
             tree[parent_id].update_node(action, parent_value)
 
-    policy, value = get_policy_value(game.state, game.player, game.available_actions, dirichlet_noise=training)
+    policy, value = get_policy_value(
+        game.state, game.player, game.available_actions, dirichlet_noise=training
+    )
 
     if verbose:
-        print('------ Policy ------')
+        print("------ Policy ------")
         print(100 * policy.reshape(game.state.shape) // 1)
-        print('--------------------')
+        print("--------------------")
 
     if n_mcts == 0:
         return -1, np.argmax(policy), -1, -1
@@ -189,17 +227,53 @@ def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verb
         parent_id = -1
         initial_result = -1
         tree.append(
-            Node(root_id, parent_id, game.state, game.player, game.available_actions, initial_result, value, policy))
+            Node(
+                root_id,
+                parent_id,
+                game.state,
+                game.player,
+                game.available_actions,
+                initial_result,
+                value,
+                policy,
+            )
+        )
     else:
         tree[root_id].p = policy
 
+
+    searches = 0
     while tree[root_id].n.sum() < n_mcts:
         update_tree(tree, root_id)
+        searches += 1
+
+
+
+    if not training:
+        mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
+        mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
+        print(f"MCTS / Policy: {mcts_policy_ratio:.0%} | Searches: {searches}")
+
+        # mcts_policy_ratio_min = 0.3, 0.25, 0.2 (Easy, Normal, Hard)
+        # New progress bar can be ((searches / 800) + ((mcts_policy_ratio - mcts_policy_ratio_min) / (1 - mcts_policy_ratio_min))) / 2
+        while (tree[root_id].n.sum() < 800) and (0.25 < mcts_policy_ratio < 0.99):
+            update_tree(tree, root_id)
+            mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
+            mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
+            searches += 1
+
+
 
     if verbose:
-        print('------- MCTS -------')
-        print(100 * (tree[root_id].n / np.sum(tree[root_id].n)).reshape(game.state.shape) // 1)
-        print('--------------------')
+        
+        mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
+        mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
+        print(f"MCTS / Policy: {mcts_policy_ratio:.0%} | Searches: {searches}")
+        print("--------------------")
+        print("------- MCTS -------")
+        print(100 * mcts_results.reshape(game.state.shape) // 1)
+        print("--------------------")
+        
 
     if tau == 0:
         p_mcts = np.zeros(shape=tree[root_id].n.shape)
@@ -239,7 +313,9 @@ def generate_episode_log(game, model_path, n_mcts, tau_turns):
         if turn > tau_turns:
             tau = 0
 
-        p_mcts, action, tree, root_id = mcts(game, model, n_mcts, tau, tree, root_id, training=True)
+        p_mcts, action, tree, root_id = mcts(
+            game, model, n_mcts, tau, tree, root_id, training=True
+        )
         game_logs.append((game.state, p_mcts, game.player))
         game.update(action)
 
@@ -255,35 +331,52 @@ def generate_episode_log(game, model_path, n_mcts, tau_turns):
         training_set.append((transform_state(state, player), p_mcts, z_reward))
 
         if game.h_flip:
-            training_set.append((transform_state(np.fliplr(state), player),
-                                 np.fliplr(p_mcts.reshape(state.shape)).reshape((-1,)), z_reward))
+            training_set.append(
+                (
+                    transform_state(np.fliplr(state), player),
+                    np.fliplr(p_mcts.reshape(state.shape)).reshape((-1,)),
+                    z_reward,
+                )
+            )
 
         if game.full_symmetry:
             for i in range(1, 4):
                 training_set.append(
-                    (transform_state(np.rot90(state, i), player),
-                     np.rot90(p_mcts.reshape(state.shape), i).reshape((-1,)),
-                     z_reward)
+                    (
+                        transform_state(np.rot90(state, i), player),
+                        np.rot90(p_mcts.reshape(state.shape), i).reshape((-1,)),
+                        z_reward,
+                    )
                 )
 
             for i in range(4):
                 training_set.append(
-                    (transform_state(np.rot90(np.fliplr(state), i), player),
-                     np.rot90(np.fliplr(p_mcts.reshape(state.shape)), i).reshape((-1,)),
-                     z_reward)
+                    (
+                        transform_state(np.rot90(np.fliplr(state), i), player),
+                        np.rot90(np.fliplr(p_mcts.reshape(state.shape)), i).reshape(
+                            (-1,)
+                        ),
+                        z_reward,
+                    )
                 )
 
     return training_set
 
 
-def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kernel_size=3):
+def alpha_zero_model(
+    input_shape, n_actions, residual_blocks=8, filters=64, kernel_size=3
+):
     """ AlphaZero used: residual_blocks=19, filters=256 """
 
     def residual_block(input_layer):
-        res_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding='same')(input_layer)
+        res_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding="same")(
+            input_layer
+        )
         res_block_out = tf.keras.layers.BatchNormalization()(res_block_out)
         res_block_out = tf.keras.layers.LeakyReLU()(res_block_out)
-        res_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding='same')(res_block_out)
+        res_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding="same")(
+            res_block_out
+        )
         res_block_out = tf.keras.layers.BatchNormalization()(res_block_out)
         res_block_out = tf.keras.layers.Add()([res_block_out, input_layer])
         res_block_out = tf.keras.layers.LeakyReLU()(res_block_out)
@@ -295,7 +388,7 @@ def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kern
         policy_out = tf.keras.layers.BatchNormalization()(policy_out)
         policy_out = tf.keras.layers.LeakyReLU()(policy_out)
         policy_out = tf.keras.layers.Flatten()(policy_out)
-        policy_out = tf.keras.layers.Dense(n_actions, name='policy')(policy_out)
+        policy_out = tf.keras.layers.Dense(n_actions, name="policy")(policy_out)
 
         return policy_out
 
@@ -306,12 +399,14 @@ def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kern
         value_out = tf.keras.layers.Flatten()(value_out)
         value_out = tf.keras.layers.Dense(filters)(value_out)
         value_out = tf.keras.layers.LeakyReLU()(value_out)
-        value_out = tf.keras.layers.Dense(1, activation='tanh', name='value')(value_out)
+        value_out = tf.keras.layers.Dense(1, activation="tanh", name="value")(value_out)
 
         return value_out
 
     inputs = tf.keras.Input(shape=input_shape)
-    conv_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding='same')(inputs)
+    conv_block_out = tf.keras.layers.Conv2D(filters, kernel_size, padding="same")(
+        inputs
+    )
     conv_block_out = tf.keras.layers.BatchNormalization()(conv_block_out)
     tower_out = tf.keras.layers.LeakyReLU()(conv_block_out)
 
@@ -327,7 +422,7 @@ def alpha_zero_model(input_shape, n_actions, residual_blocks=8, filters=64, kern
 
 
 class ConnectFour:
-    name = 'connect-four'
+    name = "connect-four"
 
     branching_factor = 4
     avg_plies = 36
@@ -354,7 +449,10 @@ class ConnectFour:
 
     def default_model(self):
 
-        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
+        return alpha_zero_model(
+            input_shape=(self._ROWS, self._COLS, self._CHANNELS),
+            n_actions=self._ACTIONS,
+        )
 
     def initialize_state(self):
         self.state = np.zeros((self._ROWS, self._COLS))
@@ -377,24 +475,60 @@ class ConnectFour:
 
                 # Check vertical
                 if i <= self._ROWS - self._CONNECT:
-                    if sum([1 for k in range(self._CONNECT) if state[i + k, j] == player]) == self._CONNECT:
+                    if (
+                        sum(
+                            [
+                                1
+                                for k in range(self._CONNECT)
+                                if state[i + k, j] == player
+                            ]
+                        )
+                        == self._CONNECT
+                    ):
                         return player
 
                 # Check horizontal
                 if j <= self._COLS - self._CONNECT:
-                    if sum([1 for k in range(self._CONNECT) if state[i, j + k] == player]) == self._CONNECT:
+                    if (
+                        sum(
+                            [
+                                1
+                                for k in range(self._CONNECT)
+                                if state[i, j + k] == player
+                            ]
+                        )
+                        == self._CONNECT
+                    ):
                         return player
 
                 # Check \ diagonal
-                if (i <= self._ROWS - self._CONNECT) and (j <= self._COLS - self._CONNECT):
-                    if sum([1 for k in range(self._CONNECT) if
-                            state[i + k, j + k] == player]) == self._CONNECT:
+                if (i <= self._ROWS - self._CONNECT) and (
+                    j <= self._COLS - self._CONNECT
+                ):
+                    if (
+                        sum(
+                            [
+                                1
+                                for k in range(self._CONNECT)
+                                if state[i + k, j + k] == player
+                            ]
+                        )
+                        == self._CONNECT
+                    ):
                         return player
 
                 # Check / diagonal
                 if (i <= self._ROWS - self._CONNECT) and (j >= self._CONNECT - 1):
-                    if sum([1 for k in range(self._CONNECT) if
-                            state[i + k, j - k] == player]) == self._CONNECT:
+                    if (
+                        sum(
+                            [
+                                1
+                                for k in range(self._CONNECT)
+                                if state[i + k, j - k] == player
+                            ]
+                        )
+                        == self._CONNECT
+                    ):
                         return player
 
         if (state == 0).sum() == 0:
@@ -427,7 +561,7 @@ class ConnectFour:
 
 
 class Reversi:
-    name = 'reversi'
+    name = "reversi"
 
     branching_factor = 10
     avg_plies = 58
@@ -452,7 +586,10 @@ class Reversi:
         self.available_actions = self.update_available_actions(self.state, self.player)
 
     def default_model(self):
-        return alpha_zero_model(input_shape=(self._ROWS, self._COLS, self._CHANNELS), n_actions=self._ACTIONS)
+        return alpha_zero_model(
+            input_shape=(self._ROWS, self._COLS, self._CHANNELS),
+            n_actions=self._ACTIONS,
+        )
 
     def initialize_state(self):
         self.state = np.zeros((self._ROWS, self._COLS))
@@ -656,7 +793,6 @@ class Reversi:
         return player
 
     def update_available_actions(self, state, player):
-
         def action_available(state, action):
             state = state.copy()
             row, col = self.get_row_col(action)

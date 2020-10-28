@@ -125,12 +125,12 @@ if __name__ == "__main__":
     C_L2 = 0.0001
 
     game = drl.ConnectFour()
-    mode = "train"  # 'train', 'play', or 'tournament'
-    initial_epoch = 416
+    mode = "play"  # 'train', 'play', or 'tournament'
+    initial_epoch = 447
     final_epoch = 1000
 
     dashboard_epochs = 50
-    n_mcts_play = 200
+    n_mcts_play = 20 * game.branching_factor # 15, 20, 25 (Easy, Normal, Hard)
     tournament_range = [
         i for i in range(0, initial_epoch + 1, max(initial_epoch // 10, 1))
     ]
@@ -170,7 +170,7 @@ if __name__ == "__main__":
             ).to_dict("list")
 
         with open(
-                os.path.join("logs", f"model_summary_{game.name}.txt"), "w"
+            os.path.join("logs", f"model_summary_{game.name}.txt"), "w"
         ) as model_summary:
             model.summary(print_fn=(lambda line: model_summary.write(f"{line}\n")))
 
@@ -200,7 +200,7 @@ if __name__ == "__main__":
             replay_buffer_list = list(replay_buffer)
             random.shuffle(replay_buffer_list)
             ds = [
-                replay_buffer_list[i: i + BATCH_SIZE]
+                replay_buffer_list[i : i + BATCH_SIZE]
                 for i in range(0, len(replay_buffer_list), BATCH_SIZE)
             ]
             epoch_loss = {"Total": [], "Policy": [], "Value": [], "L2": []}
@@ -277,7 +277,7 @@ if __name__ == "__main__":
 
             learning_curve(6, 4)
             dashboard(16, 4)
-            dashboard(16, 4, dashboard_epochs)
+            dashboard(16, 4, int(deque_growth * epoch + 1))
 
     if mode is "play":
         model = tf.keras.models.load_model(

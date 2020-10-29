@@ -125,19 +125,18 @@ if __name__ == "__main__":
     C_L2 = 0.0001
 
     game = drl.ConnectFour()
-    mode = "play"  # 'train', 'play', or 'tournament'
-    initial_epoch = 447
+    mode = "train"  # 'train', 'play', or 'tournament'
+    initial_epoch = 516
     final_epoch = 1000
 
-    dashboard_epochs = 50
-    n_mcts_play = 20 * game.branching_factor # 15, 20, 25 (Easy, Normal, Hard)
+    n_mcts_play = 100  
+
     tournament_range = [
         i for i in range(0, initial_epoch + 1, max(initial_epoch // 10, 1))
     ]
     frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
     min_deque_size = 10 * frames_per_epoch
     deque_growth = 0.4
-    tau_turns = int(0.2 * game.avg_plies + 1)
 
     model_path = os.path.join("objects", f"model_{game.name}_{initial_epoch:04d}.h5")
 
@@ -184,9 +183,7 @@ if __name__ == "__main__":
                 replay_buffer,
                 max(min_deque_size, int(deque_growth * epoch * frames_per_epoch)),
             )
-            episode_args = [
-                (game, model_path, N_MCTS, tau_turns) for _ in range(PROCESSES)
-            ]
+            episode_args = [(game, model_path, N_MCTS) for _ in range(PROCESSES)]
 
             with Pool(PROCESSES) as pool:
                 pool_results = pool.starmap_async(
@@ -272,7 +269,7 @@ if __name__ == "__main__":
                 f"Time: {total_time_r[0]}:{total_time_r[1]:02d}:{total_time_r[2]:02d} | "
                 f'Loss: {dict_loss["Loss (Total)"][-1]:.4f} (Policy: {dict_loss["Loss (Policy)"][-1]:.4f}, '
                 f'Value: {dict_loss["Loss (Value)"][-1]:.4f}, L2: {dict_loss["Loss (L2)"][-1]:.4f}) | '
-                f"Replay buffer size: {len(replay_buffer)}"
+                f"Replay buffer size: {len(replay_buffer)} | Epochs/day: {epoch / total_time * 3600 * 24:.0f}"
             )
 
             learning_curve(6, 4)
@@ -299,7 +296,14 @@ if __name__ == "__main__":
                 action = int(input("Choose a tile: "))
 
             else:
-                _, action, _, _ = drl.mcts(game, model, n_mcts_play, verbose=True)
+
+                start_time = time.time()
+                _, action, _, _ = drl.mcts(
+                    game,
+                    model,
+                    n_mcts_play,
+                )
+                print(f"Time to think: {time.time() - start_time:.1f} s")
 
             game.update(action)
 

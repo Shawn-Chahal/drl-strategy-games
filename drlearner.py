@@ -18,7 +18,13 @@ def transform_state(state, player):
 
 
 def mcts(
-    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, verbose=False
+    game,
+    model,
+    n_mcts,
+    tau=0,
+    tree=None,
+    root_id=-1,
+    training=False,
 ):
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
@@ -63,14 +69,8 @@ def mcts(
                 if not available_action:
                     next_search_proba[a] = min_proba
 
-            if int(np.sum(self.n) + 0.1) == 0:
-                action = rng.choice(
-                    [
-                        a
-                        for a, available in enumerate(self.available_actions)
-                        if available
-                    ]
-                )
+            if np.sum(self.n) < 0.5:
+                action = np.argmax(self.p)
             else:
                 action = np.argmax(next_search_proba)
 
@@ -213,7 +213,7 @@ def mcts(
         game.state, game.player, game.available_actions, dirichlet_noise=training
     )
 
-    if verbose:
+    if not training:
         print("------ Policy ------")
         print(100 * policy.reshape(game.state.shape) // 1)
         print("--------------------")
@@ -241,47 +241,50 @@ def mcts(
     else:
         tree[root_id].p = policy
 
-
     searches = 0
     while tree[root_id].n.sum() < n_mcts:
         update_tree(tree, root_id)
         searches += 1
 
-
-
     if not training:
-        mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
-        print(f"MCTS / Policy: {mcts_policy_ratio:.0%} | Searches: {searches}")
 
-        # mcts_policy_ratio_min = 0.3, 0.25, 0.2 (Easy, Normal, Hard)
-        # New progress bar can be ((searches / 800) + ((mcts_policy_ratio - mcts_policy_ratio_min) / (1 - mcts_policy_ratio_min))) / 2
-        while (tree[root_id].n.sum() < 800) and (0.25 < mcts_policy_ratio < 0.99):
+        proba_max = np.amax(policy)
+        proba_min = 1 / np.sum(game.available_actions)
+        policy_action = np.argmax(policy)
+
+        mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
+        mp_ratio = mcts_results[policy_action] / proba_max
+
+        if proba_min < mcts_results[policy_action] < proba_max:
+            print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
+            print("--------------------")
+            print("------- MCTS -------")
+            print(100 * mcts_results.reshape(game.state.shape) // 1)
+            print("--------------------")
+
+        while (
+            tree[root_id].n.sum() < 800
+            and proba_min < mcts_results[policy_action] < proba_max
+        ):
             update_tree(tree, root_id)
             mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-            mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
             searches += 1
 
-
-
-    if verbose:
-        
         mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mcts_policy_ratio = mcts_results[np.argmax(policy)] / np.amax(policy)
-        print(f"MCTS / Policy: {mcts_policy_ratio:.0%} | Searches: {searches}")
+        mp_ratio = mcts_results[policy_action] / proba_max
+        print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
         print("--------------------")
         print("------- MCTS -------")
         print(100 * mcts_results.reshape(game.state.shape) // 1)
         print("--------------------")
-        
 
-    if tau == 0:
+    if tau < 0.5:
+        action = np.argmax(tree[root_id].n)
         p_mcts = np.zeros(shape=tree[root_id].n.shape)
-        p_mcts[np.argmax(tree[root_id].n)] = 1
+        p_mcts[action] = 1
     else:
         p_mcts = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
-
-    action = rng.choice(len(game.available_actions), p=p_mcts)
+        action = rng.choice(len(game.available_actions), p=p_mcts)
 
     if not game.available_actions[action]:
         for a, available_action in enumerate(game.available_actions):
@@ -296,9 +299,11 @@ def mcts(
     return p_mcts, action, tree, root_id
 
 
-def generate_episode_log(game, model_path, n_mcts, tau_turns):
+def generate_episode_log(game, model_path, n_mcts):
     model = tf.keras.models.load_model(model_path)
 
+    tau_a = 3
+    tau_b = 2
     training_set = []
     game_logs = []
     tree = None
@@ -309,9 +314,7 @@ def generate_episode_log(game, model_path, n_mcts, tau_turns):
 
     while game.result == -1:
         turn += 1
-
-        if turn > tau_turns:
-            tau = 0
+        tau = tau_a * np.exp(-tau_b * turn / game.avg_plies)
 
         p_mcts, action, tree, root_id = mcts(
             game, model, n_mcts, tau, tree, root_id, training=True
@@ -470,66 +473,32 @@ class ConnectFour:
 
     def update_result(self, state, action, player):
 
-        for i in range(self._ROWS):
-            for j in range(self._COLS):
+        row_a, col_a = self.get_row_col(action)
+        state_p = state == player
 
-                # Check vertical
-                if i <= self._ROWS - self._CONNECT:
-                    if (
-                        sum(
-                            [
-                                1
-                                for k in range(self._CONNECT)
-                                if state[i + k, j] == player
-                            ]
-                        )
-                        == self._CONNECT
-                    ):
-                        return player
+        # Check vertical
+        if np.sum(state_p[row_a : row_a + self._CONNECT, col_a]) == self._CONNECT:
+            return player
 
-                # Check horizontal
-                if j <= self._COLS - self._CONNECT:
-                    if (
-                        sum(
-                            [
-                                1
-                                for k in range(self._CONNECT)
-                                if state[i, j + k] == player
-                            ]
-                        )
-                        == self._CONNECT
-                    ):
-                        return player
+        # Check horizontal
+        for j in range(self._COLS - self._CONNECT + 1):
+            if np.sum(state_p[row_a, j : j + self._CONNECT]) == self._CONNECT:
+                return player
 
-                # Check \ diagonal
-                if (i <= self._ROWS - self._CONNECT) and (
-                    j <= self._COLS - self._CONNECT
-                ):
-                    if (
-                        sum(
-                            [
-                                1
-                                for k in range(self._CONNECT)
-                                if state[i + k, j + k] == player
-                            ]
-                        )
-                        == self._CONNECT
-                    ):
-                        return player
+        # Check \ diagonal
+        diagonal_nw_se = np.diag(state_p, col_a - row_a)
+        if np.sum(diagonal_nw_se) >= self._CONNECT:
+            for k in range(diagonal_nw_se.size - self._CONNECT + 1):
+                if np.sum(diagonal_nw_se[k : k + self._CONNECT]) == self._CONNECT:
+                    return player
 
-                # Check / diagonal
-                if (i <= self._ROWS - self._CONNECT) and (j >= self._CONNECT - 1):
-                    if (
-                        sum(
-                            [
-                                1
-                                for k in range(self._CONNECT)
-                                if state[i + k, j - k] == player
-                            ]
-                        )
-                        == self._CONNECT
-                    ):
-                        return player
+        # Check / diagonal
+        col_i = (self._COLS - 1) - col_a
+        diagonal_ne_sw = np.diag(state_p[:, ::-1], col_i - row_a)
+        if np.sum(diagonal_ne_sw) >= self._CONNECT:
+            for k in range(diagonal_ne_sw.size - self._CONNECT + 1):
+                if np.sum(diagonal_ne_sw[k : k + self._CONNECT]) == self._CONNECT:
+                    return player
 
         if (state == 0).sum() == 0:
             return 0

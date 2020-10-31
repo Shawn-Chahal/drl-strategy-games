@@ -18,13 +18,7 @@ def transform_state(state, player):
 
 
 def mcts(
-    game,
-    model,
-    n_mcts,
-    tau=0,
-    tree=None,
-    root_id=-1,
-    training=False,
+    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, mp_threshold=1
 ):
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
@@ -248,12 +242,13 @@ def mcts(
 
     if not training:
 
-        proba_max = np.amax(policy)
+        policy_max = np.amax(policy)
+        proba_max = mp_threshold * policy_max
         proba_min = 1 / np.sum(game.available_actions)
         policy_action = np.argmax(policy)
 
         mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mp_ratio = mcts_results[policy_action] / proba_max
+        mp_ratio = mcts_results[policy_action] / policy_max
 
         if proba_min < mcts_results[policy_action] < proba_max:
             print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
@@ -271,7 +266,7 @@ def mcts(
             searches += 1
 
         mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mp_ratio = mcts_results[policy_action] / proba_max
+        mp_ratio = mcts_results[policy_action] / policy_max
         print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
         print("--------------------")
         print("------- MCTS -------")
@@ -299,11 +294,10 @@ def mcts(
     return p_mcts, action, tree, root_id
 
 
-def generate_episode_log(game, model_path, n_mcts):
+def generate_episode_log(game, model_path, n_mcts, tau_initial):
     model = tf.keras.models.load_model(model_path)
 
-    tau_a = 3
-    tau_b = 2
+    tau_decay = np.log(1 / tau_initial) / (-0.5)
     training_set = []
     game_logs = []
     tree = None
@@ -314,7 +308,7 @@ def generate_episode_log(game, model_path, n_mcts):
 
     while game.result == -1:
         turn += 1
-        tau = tau_a * np.exp(-tau_b * turn / game.avg_plies)
+        tau = tau_initial * np.exp(-tau_decay * turn / game.avg_plies)
 
         p_mcts, action, tree, root_id = mcts(
             game, model, n_mcts, tau, tree, root_id, training=True

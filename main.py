@@ -126,10 +126,13 @@ if __name__ == "__main__":
 
     game = drl.ConnectFour()
     mode = "train"  # 'train', 'play', or 'tournament'
-    initial_epoch = 516
+    initial_epoch = 574
     final_epoch = 1000
+    
+    tau_initial = 3
 
-    n_mcts_play = 100  
+    n_mcts_play = 100
+    mp_threshold = 0.9
 
     tournament_range = [
         i for i in range(0, initial_epoch + 1, max(initial_epoch // 10, 1))
@@ -183,7 +186,9 @@ if __name__ == "__main__":
                 replay_buffer,
                 max(min_deque_size, int(deque_growth * epoch * frames_per_epoch)),
             )
-            episode_args = [(game, model_path, N_MCTS) for _ in range(PROCESSES)]
+            episode_args = [
+                (game, model_path, N_MCTS, tau_initial) for _ in range(PROCESSES)
+            ]
 
             with Pool(PROCESSES) as pool:
                 pool_results = pool.starmap_async(
@@ -299,9 +304,7 @@ if __name__ == "__main__":
 
                 start_time = time.time()
                 _, action, _, _ = drl.mcts(
-                    game,
-                    model,
-                    n_mcts_play,
+                    game, model, n_mcts_play, mp_threshold=mp_threshold
                 )
                 print(f"Time to think: {time.time() - start_time:.1f} s")
 

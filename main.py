@@ -125,8 +125,8 @@ if __name__ == "__main__":
     C_L2 = 0.0001
 
     game = drl.ConnectFour()
-    mode = "train"  # 'train', 'play', or 'tournament'
-    initial_epoch = 574
+    mode = "play"  # 'train', 'play', or 'tournament'
+    initial_epoch = 658
     final_epoch = 1000
     
     tau_initial = 3

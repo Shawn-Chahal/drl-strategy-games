@@ -125,20 +125,15 @@ if __name__ == "__main__":
     C_L2 = 0.0001
 
     game = drl.ConnectFour()
-    mode = "play"  # 'train', 'play', or 'tournament'
-    initial_epoch = 658
+    mode = "train"  # "train" or "play"
+    initial_epoch = 64
     final_epoch = 1000
-    
-    tau_initial = 3
 
     n_mcts_play = 100
     mp_threshold = 0.9
 
-    tournament_range = [
-        i for i in range(0, initial_epoch + 1, max(initial_epoch // 10, 1))
-    ]
+    tau_initial = 3
     frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
-    min_deque_size = 10 * frames_per_epoch
     deque_growth = 0.4
 
     model_path = os.path.join("objects", f"model_{game.name}_{initial_epoch:04d}.h5")
@@ -156,7 +151,7 @@ if __name__ == "__main__":
                 "Loss (L2)": [],
                 "Time [s]": [],
             }
-            replay_buffer = deque([], min_deque_size)
+            replay_buffer = deque([], frames_per_epoch)
             optimizer = tf.keras.optimizers.Adam()
 
         else:
@@ -184,7 +179,7 @@ if __name__ == "__main__":
         for epoch in range(initial_epoch + 1, final_epoch + 1):
             replay_buffer = deque(
                 replay_buffer,
-                max(min_deque_size, int(deque_growth * epoch * frames_per_epoch)),
+                int(deque_growth * epoch * frames_per_epoch),
             )
             episode_args = [
                 (game, model_path, N_MCTS, tau_initial) for _ in range(PROCESSES)
@@ -314,48 +309,3 @@ if __name__ == "__main__":
             print("--------------")
 
         print(f"Result: {game.result}")
-
-    if mode is "tournament":
-
-        tournament_args = []
-        for epoch_1 in tournament_range:
-            for epoch_2 in tournament_range:
-                tournament_args.append(
-                    (game, epoch_1, epoch_2, n_mcts_play, len(tournament_args))
-                )
-
-        print(
-            f"Game: {game.name} | Tournament games: {len(tournament_args)} | n_mcts_play: {n_mcts_play}"
-        )
-
-        with Pool(PROCESSES) as pool:
-            pool_results = pool.starmap_async(tournament, tournament_args)
-            tournament_logs = pool_results.get()
-
-        print(
-            f"Game: {game.name} | Tournament games: {len(tournament_args)} | n_mcts_play: {n_mcts_play}"
-        )
-        tournament_results = {
-            i: {"Win": 0, "Draw": 0, "Lose": 0} for i in tournament_range
-        }
-        for p1_epoch, p2_epoch, game_result in tournament_logs:
-            if game_result == 1:
-                tournament_results[p1_epoch]["Win"] += 1
-            elif game_result == 2:
-                tournament_results[p1_epoch]["Lose"] += 1
-            else:
-                tournament_results[p1_epoch]["Draw"] += 1
-
-            print(
-                f"Player 1: {p1_epoch:3d} | Player 2: {p2_epoch:3d} | Result: {game_result}"
-            )
-
-        print("-------------------------")
-        print(
-            f"Game: {game.name} | Tournament games: {len(tournament_args)} | n_mcts_play: {n_mcts_play}"
-        )
-        for epoch in tournament_range:
-            print(
-                f"Epoch {epoch:3d} | Win: {tournament_results[epoch]['Win']} | "
-                f"Draw: {tournament_results[epoch]['Draw']} | Lose: {tournament_results[epoch]['Lose']}"
-            )

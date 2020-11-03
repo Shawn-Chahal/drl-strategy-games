@@ -273,21 +273,17 @@ def mcts(
         print(100 * mcts_results.reshape(game.state.shape) // 1)
         print("--------------------")
 
-    if tau < 0.5:
-        action = np.argmax(tree[root_id].n)
-        p_mcts = np.zeros(shape=tree[root_id].n.shape)
-        p_mcts[action] = 1
-    else:
-        p_mcts = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
-        action = rng.choice(len(game.available_actions), p=p_mcts)
+    mcts_optimal = np.argmax(tree[root_id].n)
+    p_mcts = np.zeros(tree[root_id].n.shape)
+    p_mcts[mcts_optimal] = 1
 
-    if not game.available_actions[action]:
-        for a, available_action in enumerate(game.available_actions):
-            if available_action:
-                p_mcts = np.zeros(shape=tree[root_id].n.shape)
-                p_mcts[a] = 1
-                action = a + 0
-                break
+    if tau < 0.5:
+        action = mcts_optimal
+    else:
+        proba = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
+        action = rng.choice(len(game.available_actions), p=proba)
+        if not game.available_actions[action]:
+            action = mcts_optimal
 
     root_id = tree[root_id].children_ids[action]
 

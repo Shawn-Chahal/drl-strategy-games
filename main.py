@@ -126,10 +126,10 @@ if __name__ == "__main__":
 
     game = drl.ConnectFour()
     mode = "train"  # "train" or "play"
-    initial_epoch = 64
+    initial_epoch = 251
     final_epoch = 1000
 
-    n_mcts_play = 100
+    n_mcts_play = 0
     mp_threshold = 0.9
 
     tau_initial = 3

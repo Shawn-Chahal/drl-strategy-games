@@ -18,7 +18,7 @@ def transform_state(state, player):
 
 
 def mcts(
-    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False, mp_threshold=1
+    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False
 ):
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
@@ -235,40 +235,11 @@ def mcts(
     else:
         tree[root_id].p = policy
 
-    searches = 0
     while tree[root_id].n.sum() < n_mcts:
         update_tree(tree, root_id)
-        searches += 1
 
     if not training:
-
-        policy_max = np.amax(policy)
-        proba_max = mp_threshold * policy_max
-        proba_min = 1 / np.sum(game.available_actions)
-        policy_action = np.argmax(policy)
-
         mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mp_ratio = mcts_results[policy_action] / policy_max
-
-        if proba_min < mcts_results[policy_action] < proba_max:
-            print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
-            print("--------------------")
-            print("------- MCTS -------")
-            print(100 * mcts_results.reshape(game.state.shape) // 1)
-            print("--------------------")
-
-        while (
-            tree[root_id].n.sum() < 800
-            and proba_min < mcts_results[policy_action] < proba_max
-        ):
-            update_tree(tree, root_id)
-            mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-            searches += 1
-
-        mcts_results = tree[root_id].n / np.sum(tree[root_id].n)
-        mp_ratio = mcts_results[policy_action] / policy_max
-        print(f"MCTS / Policy: {mp_ratio:.0%} | Searches: {searches}")
-        print("--------------------")
         print("------- MCTS -------")
         print(100 * mcts_results.reshape(game.state.shape) // 1)
         print("--------------------")

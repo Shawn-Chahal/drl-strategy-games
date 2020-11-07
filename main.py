@@ -85,28 +85,6 @@ def dashboard(width, height, n_last_epochs=None):
         )
 
 
-def tournament(game, model_1_epoch, model_2_epoch, n_mcts_play, match_number):
-    print(f"Match: {match_number}")
-
-    model_1 = tf.keras.models.load_model(
-        os.path.join("objects", f"model_{game.name}_{model_1_epoch:04d}.h5")
-    )
-    model_2 = tf.keras.models.load_model(
-        os.path.join("objects", f"model_{game.name}_{model_2_epoch:04d}.h5")
-    )
-    game.reset()
-
-    while game.result is -1:
-        if game.player is 1:
-            _, action, _, _ = drl.mcts(game, model_1, n_mcts_play)
-        else:
-            _, action, _, _ = drl.mcts(game, model_2, n_mcts_play)
-
-        game.update(action)
-
-    return model_1_epoch, model_2_epoch, game.result
-
-
 def get_time(t):
     hours = int(t / 3600)
     t = t - 3600 * hours
@@ -126,16 +104,13 @@ if __name__ == "__main__":
 
     game = drl.ConnectFour()
     mode = "train"  # "train" or "play"
-    initial_epoch = 251
+    initial_epoch = 289
     final_epoch = 1000
 
-    n_mcts_play = 0
-    mp_threshold = 0.9
-
     tau_initial = 3
-    frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
     deque_growth = 0.4
 
+    frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
     model_path = os.path.join("objects", f"model_{game.name}_{initial_epoch:04d}.h5")
 
     if mode is "train":
@@ -288,7 +263,6 @@ if __name__ == "__main__":
         while game.result is -1:
 
             if game.player is player_human:
-
                 actions_table = [i for i in range(game.available_actions.size)]
                 actions_table = np.array(actions_table) * game.available_actions
                 actions_table = actions_table.reshape(game.state.shape)
@@ -296,12 +270,7 @@ if __name__ == "__main__":
                 action = int(input("Choose a tile: "))
 
             else:
-
-                start_time = time.time()
-                _, action, _, _ = drl.mcts(
-                    game, model, n_mcts_play, mp_threshold=mp_threshold
-                )
-                print(f"Time to think: {time.time() - start_time:.1f} s")
+                _, action, _, _ = drl.mcts(game, model, 0)
 
             game.update(action)
 

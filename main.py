@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
     game = drl.Reversi()
     mode = "train"  # "train" or "play"
-    initial_epoch = 0
+    initial_epoch = 2
     final_epoch = 1000
 
     tau_initial = 3
@@ -217,7 +217,6 @@ if __name__ == "__main__":
 
             model_path = os.path.join("objects", f"model_{game.name}_{epoch:04d}.h5")
             model.save(model_path)
-            model.save(os.path.join("best-networks", f"model_{game.name}.h5"))
             pickle.dump(
                 optimizer,
                 open(os.path.join("objects", f"optimizer_{game.name}.pkl"), "wb"),

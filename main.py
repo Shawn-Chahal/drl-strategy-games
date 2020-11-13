@@ -102,9 +102,9 @@ if __name__ == "__main__":
     N_MCTS = 800
     C_L2 = 0.0001
 
-    game = drl.ConnectFour()
+    game = drl.Reversi()
     mode = "train"  # "train" or "play"
-    initial_epoch = 289
+    initial_epoch = 0
     final_epoch = 1000
 
     tau_initial = 3
@@ -239,21 +239,23 @@ if __name__ == "__main__":
                 os.path.join("logs", f"loss_{game.name}.csv"), index=False
             )
 
+            epochs_per_day = epoch / total_time * 3600 * 24
+
             print(
                 f"Epoch: {epoch}/{final_epoch} | "
                 f"Time: {total_time_r[0]}:{total_time_r[1]:02d}:{total_time_r[2]:02d} | "
                 f'Loss: {dict_loss["Loss (Total)"][-1]:.4f} (Policy: {dict_loss["Loss (Policy)"][-1]:.4f}, '
                 f'Value: {dict_loss["Loss (Value)"][-1]:.4f}, L2: {dict_loss["Loss (L2)"][-1]:.4f}) | '
-                f"Replay buffer size: {len(replay_buffer)} | Epochs/day: {epoch / total_time * 3600 * 24:.0f}"
+                f"Replay buffer size: {len(replay_buffer)} | Epochs/day: {epochs_per_day:.0f}"
             )
 
             learning_curve(6, 4)
             dashboard(16, 4)
-            dashboard(16, 4, int(deque_growth * epoch + 1))
+            dashboard(16, 4, int(epochs_per_day + 1))
 
     if mode is "play":
         model = tf.keras.models.load_model(
-            os.path.join("best-networks", f"model_{game.name}.h5")
+            os.path.join("objects", f"model_{game.name}_{initial_epoch:04d}.h5")
         )
         game.reset()
         player_human = int(input("Choose a player [1, 2]: "))

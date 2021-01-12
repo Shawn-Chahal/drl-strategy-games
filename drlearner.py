@@ -17,9 +17,7 @@ def transform_state(state, player):
     return np.stack((t_state_1, t_state_2), axis=-1).astype(np.float32)
 
 
-def mcts(
-    game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False
-):
+def mcts(game, model, n_mcts, tau=0, tree=None, root_id=-1, training=False):
     d_alpha = 10.0 / game.branching_factor
     d_epsilon = 0.25
 
@@ -244,17 +242,17 @@ def mcts(
         print(100 * mcts_results.reshape(game.state.shape) // 1)
         print("--------------------")
 
-    mcts_optimal = np.argmax(tree[root_id].n)
-    p_mcts = np.zeros(tree[root_id].n.shape)
-    p_mcts[mcts_optimal] = 1
+    action_optimal = np.argmax(tree[root_id].n)
 
     if tau < 0.5:
-        action = mcts_optimal
+        action = action_optimal
+        p_mcts = np.zeros(tree[root_id].n.shape)
+        p_mcts[action_optimal] = 1
     else:
-        proba = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
-        action = rng.choice(len(game.available_actions), p=proba)
+        p_mcts = tree[root_id].n ** (1 / tau) / np.sum(tree[root_id].n ** (1 / tau))
+        action = rng.choice(len(game.available_actions), p=p_mcts)
         if not game.available_actions[action]:
-            action = mcts_optimal
+            action = action_optimal
 
     root_id = tree[root_id].children_ids[action]
 

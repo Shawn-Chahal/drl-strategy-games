@@ -97,18 +97,18 @@ def get_time(t):
 
 if __name__ == "__main__":
 
+    game = drl.Reversi()
+    mode = "train"  # "train" or "play"
+    initial_epoch = 14
+    final_epoch = 1000
+
     PROCESSES = 5
     BATCH_SIZE = 512
     N_MCTS = 800
     C_L2 = 0.0001
 
-    game = drl.Reversi()
-    mode = "train"  # "train" or "play"
-    initial_epoch = 2
-    final_epoch = 1000
-
-    tau_initial = 3
-    deque_growth = 0.4
+    tau_initial = 2
+    deque_growth = 1 / 3
 
     frames_per_epoch = PROCESSES * game.avg_plies * game.symmetry_factor
     model_path = os.path.join("objects", f"model_{game.name}_{initial_epoch:04d}.h5")
@@ -142,7 +142,7 @@ if __name__ == "__main__":
             ).to_dict("list")
 
         with open(
-            os.path.join("logs", f"model_summary_{game.name}.txt"), "w"
+                os.path.join("logs", f"model_summary_{game.name}.txt"), "w"
         ) as model_summary:
             model.summary(print_fn=(lambda line: model_summary.write(f"{line}\n")))
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
             replay_buffer_list = list(replay_buffer)
             random.shuffle(replay_buffer_list)
             ds = [
-                replay_buffer_list[i : i + BATCH_SIZE]
+                replay_buffer_list[i: i + BATCH_SIZE]
                 for i in range(0, len(replay_buffer_list), BATCH_SIZE)
             ]
             epoch_loss = {"Total": [], "Policy": [], "Value": [], "L2": []}
@@ -239,13 +239,15 @@ if __name__ == "__main__":
             )
 
             epochs_per_day = epoch / total_time * 3600 * 24
+            timestamp = time.strftime("%H:%M:%S", time.localtime())
 
             print(
                 f"Epoch: {epoch}/{final_epoch} | "
                 f"Time: {total_time_r[0]}:{total_time_r[1]:02d}:{total_time_r[2]:02d} | "
                 f'Loss: {dict_loss["Loss (Total)"][-1]:.4f} (Policy: {dict_loss["Loss (Policy)"][-1]:.4f}, '
                 f'Value: {dict_loss["Loss (Value)"][-1]:.4f}, L2: {dict_loss["Loss (L2)"][-1]:.4f}) | '
-                f"Replay buffer size: {len(replay_buffer)} | Epochs/day: {epochs_per_day:.0f}"
+                f"Replay buffer size: {len(replay_buffer)} | Epochs/day: {epochs_per_day:.0f} | "
+                f"Timestamp: {timestamp}"
             )
 
             learning_curve(6, 4)

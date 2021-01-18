@@ -30,6 +30,7 @@ def learning_curve(width, height):
 
     plt.tight_layout()
     plt.savefig(os.path.join("logs", f"learning_curve_{game.name}.png"))
+    plt.close(fig)
 
 
 def dashboard(width, height, n_last_epochs=None):
@@ -83,6 +84,7 @@ def dashboard(width, height, n_last_epochs=None):
         plt.savefig(
             os.path.join("logs", f"learning_curve_{game.name}_dashboard_recent.png")
         )
+    plt.close(fig)
 
 
 def get_time(t):
@@ -99,7 +101,7 @@ if __name__ == "__main__":
 
     game = drl.Reversi()
     mode = "train"  # "train" or "play"
-    initial_epoch = 36
+    initial_epoch = 90
     final_epoch = 1000
 
     PROCESSES = 5
